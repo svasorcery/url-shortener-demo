@@ -1,0 +1,77 @@
+name: build-push-ghcr
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+on:
+  push:
+    branches:
+      - dev
+    tags:
+      - "v*.*.*"
+
+concurrency: 
+  group: ${{ github.repository }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Building image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: 'Checkout GitHub Action'
+        uses: actions/checkout@main
+        
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          # list of Docker images to use as base name for tags
+          images: |
+            name/app
+            ghcr.io/username/app
+          # generate Docker tags based on the following events/attributes
+          tags: |
+            type=schedule
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: 'Login to GitHub Container Registry'
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:latest
+
+      - name: SSH deploy
+        uses: cross-the-world/ssh-scp-ssh-pipelines@latest
+        with:
+          host: ${{ secrets.DC_HOST_ADDRESS }}
+          user: ${{ secrets.DC_USERNAME }}
+          pass: ${{ secrets.DC_PASSWORD }}
+          first_ssh: |
+            docker stop $(docker ps -a -q --filter ancestor=ghcr.io/${{ github.repository }}:latest) || true
+            docker rm $(docker ps -a -q --filter ancestor=ghcr.io/${{ github.repository }}:latest) || true
+            docker rmi $(docker images ghcr.io/${{ github.repository }}:latest -q) || true
+            docker run -d -p 5000:5000 --name UrlShortener.Api ghcr.io/${{ github.repository }}:latest
