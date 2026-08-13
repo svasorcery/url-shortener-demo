@@ -12,7 +12,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docker", "docker", "{C26A349F-0F83-42ED-9A07-136FE2224980}"
 	ProjectSection(SolutionItems) = preProject
 		docker-compose.yml = docker-compose.yml
-		dockerfile = dockerfile
+		Dockerfile = Dockerfile
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UrlShortener.Tests", "tests\UrlShortener.Tests\UrlShortener.Tests.csproj", "{753CBBCF-D33D-4D03-9C6A-B300EB21DFA2}"

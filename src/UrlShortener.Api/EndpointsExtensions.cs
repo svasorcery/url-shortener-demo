@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using UrlShortener.Api.Models;
 using UrlShortener.Api.Services;
@@ -14,48 +15,65 @@ internal static class EndpointsExtensions
 
     public static void MapUrlShortenerEndpoints(this IEndpointRouteBuilder app)
     {
-        // POST /shorten
-        app.MapPost("shorten", async (
+        app.MapPost("/shorten", async (
             ShortenUrlRequest request,
             HttpContext httpContext,
             ApplicationDbContext dbContext,
             UrlShorteningService urlShortener,
+            IValidator<ShortenUrlRequest> validator,
+            CancellationToken cancellationToken,
             ILogger<Program> logger
             ) =>
         {
+            var validationResult = await validator.ValidateAsync(request, cancellationToken);
+            if (!validationResult.IsValid)
+            {
+                var errors = validationResult.Errors
+                    .GroupBy(error => error.PropertyName)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.Select(error => error.ErrorMessage).ToArray());
+
+                return Results.ValidationProblem(errors);
+            }
+
             try
             {
-                var code = await urlShortener.GenerateUniqueCodeAsync();
+                var code = await urlShortener.GenerateUniqueCodeAsync(cancellationToken);
+                var shortUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/{code}";
 
                 var shortenedUrl = new ShortenedUrl
                 {
                     Id = Guid.NewGuid(),
                     Code = code,
                     LongUrl = request.Url,
-                    ShortUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/{code}",
                     CreatedAt = DateTime.UtcNow
                 };
 
                 dbContext.ShortenedUrls.Add(shortenedUrl);
-                await dbContext.SaveChangesAsync();
+                await dbContext.SaveChangesAsync(cancellationToken);
 
                 logger.LogInformation("Shortened URL with code: '{Code}' stored successfully.", shortenedUrl.Code);
 
-                return Results.Ok(shortenedUrl.ShortUrl);
+                return Results.Created(shortUrl, new ShortenUrlResponse(code, shortUrl));
             }
             catch (Exception exception)
             {
-                logger.LogError("Error while storing shortened URL, {Error}.", exception.Message);
+                logger.LogError(exception, "Error while storing shortened URL.");
 
-                return Results.BadRequest("Unable to store URL, try again later.");
+                return Results.Problem("Unable to store URL. Try again later.");
             }
-        });
+        })
+        .WithName("ShortenUrl")
+        .Produces<ShortenUrlResponse>(StatusCodes.Status201Created)
+        .ProducesValidationProblem()
+        .ProducesProblem(StatusCodes.Status500InternalServerError);
 
-        // GET /A1b2c3
-        app.MapGet("{code}", async (
+        app.MapGet("/{code}", async (
             string code,
             ApplicationDbContext dbContext,
             IMemoryCache cache,
+            CancellationToken cancellationToken,
             ILogger<Program> logger
             ) =>
         {
@@ -66,7 +84,9 @@ internal static class EndpointsExtensions
                 return Results.Redirect(cachedLongUrl);
             }
 
-            var shortenedUrl = await dbContext.ShortenedUrls.FirstOrDefaultAsync(x => x.Code == code);
+            var shortenedUrl = await dbContext.ShortenedUrls
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Code == code, cancellationToken);
             if (shortenedUrl is null)
             {
                 logger.LogInformation("Shortened URL with code: '{Code}' was not found.", code);
@@ -82,11 +102,14 @@ internal static class EndpointsExtensions
             }
             catch (Exception exception)
             {
-                logger.LogError("Error while caching shortened URL, {Error}.", exception.Message);
+                logger.LogError(exception, "Error while caching shortened URL with code: '{Code}'.", code);
             }
 
             return Results.Redirect(shortenedUrl.LongUrl);
-        });
+        })
+        .WithName("ResolveShortUrl")
+        .Produces(StatusCodes.Status302Found)
+        .Produces(StatusCodes.Status404NotFound);
     }
 
 }

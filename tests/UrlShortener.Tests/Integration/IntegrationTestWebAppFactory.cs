@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using UrlShortener.Api.Persistence;
 
 namespace UrlShortener.Tests.Integration;
@@ -27,6 +28,11 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        builder.ConfigureLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+        });
 
         builder.ConfigureTestServices(services =>
         {
@@ -38,7 +44,7 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
         });
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _postgreSqlContainer.StartAsync();
 
@@ -49,7 +55,7 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
         await _connection.OpenAsync();
     }
 
-    public new async Task DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         if (_connection is not null)
         {
@@ -59,6 +65,6 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
 
         _scope?.Dispose();
         await _postgreSqlContainer.DisposeAsync();
-        base.Dispose();
+        await base.DisposeAsync();
     }
 }
