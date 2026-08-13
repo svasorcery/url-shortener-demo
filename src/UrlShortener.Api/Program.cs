@@ -22,6 +22,7 @@ services.AddValidatorsFromAssembly(
     includeInternalTypes: true
     );
 
+services.AddMemoryCache();
 services.AddScoped<UrlShorteningService>();
 
 
