@@ -10,7 +10,8 @@ internal sealed class ShortenUrlRequestValidator : AbstractValidator<ShortenUrlR
     {
         RuleFor(x => x.Url)
             .NotEmpty()
-            .Must(uri => Uri.TryCreate(uri, UriKind.Absolute, out _))
+            .Must(uri => Uri.TryCreate(uri, UriKind.Absolute, out var parsedUri)
+                && (parsedUri.Scheme == Uri.UriSchemeHttp || parsedUri.Scheme == Uri.UriSchemeHttps))
             .WithMessage("Invalid URL.");
     }
 }

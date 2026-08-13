@@ -14,12 +14,12 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
 {
     private readonly PostgreSqlContainer _postgreSqlContainer;
     private DbConnection _connection = null!;
+    private IServiceScope _scope = null!;
     public ApplicationDbContext DbContext { get; private set; } = null!;
 
     public IntegrationTestWebAppFactory()
     {
-        _postgreSqlContainer = new PostgreSqlBuilder()
-            .WithImage("postgres:latest")
+        _postgreSqlContainer = new PostgreSqlBuilder("postgres:16-alpine")
             .WithCleanUp(true)
             .Build();
     }
@@ -41,7 +41,8 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
     {
         await _postgreSqlContainer.StartAsync();
 
-        DbContext = Services.CreateScope().ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        _scope = Services.CreateScope();
+        DbContext = _scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         _connection = DbContext.Database.GetDbConnection();
         await _connection.OpenAsync();
     }
@@ -49,6 +50,7 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
     public new async Task DisposeAsync()
     {
         await _connection.CloseAsync();
+        _scope.Dispose();
         await _postgreSqlContainer.DisposeAsync();
     }
 }
