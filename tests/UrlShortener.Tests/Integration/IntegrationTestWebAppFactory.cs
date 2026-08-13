@@ -13,8 +13,8 @@ namespace UrlShortener.Tests.Integration;
 public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgreSqlContainer;
-    private DbConnection _connection = null!;
-    private IServiceScope _scope = null!;
+    private DbConnection? _connection;
+    private IServiceScope? _scope;
     public ApplicationDbContext DbContext { get; private set; } = null!;
 
     public IntegrationTestWebAppFactory()
@@ -26,6 +26,8 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseEnvironment("Testing");
+
         builder.ConfigureTestServices(services =>
         {
             services.RemoveDbContext<ApplicationDbContext>();
@@ -33,7 +35,6 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
             {
                 options.UseNpgsql(_postgreSqlContainer.GetConnectionString());
             });
-            services.EnsureDbCreated<ApplicationDbContext>();
         });
     }
 
@@ -43,14 +44,21 @@ public class IntegrationTestWebAppFactory : WebApplicationFactory<Program>, IAsy
 
         _scope = Services.CreateScope();
         DbContext = _scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await DbContext.Database.MigrateAsync();
         _connection = DbContext.Database.GetDbConnection();
         await _connection.OpenAsync();
     }
 
     public new async Task DisposeAsync()
     {
-        await _connection.CloseAsync();
-        _scope.Dispose();
+        if (_connection is not null)
+        {
+            await _connection.CloseAsync();
+            await _connection.DisposeAsync();
+        }
+
+        _scope?.Dispose();
         await _postgreSqlContainer.DisposeAsync();
+        base.Dispose();
     }
 }
