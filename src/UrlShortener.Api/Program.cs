@@ -22,6 +22,7 @@ services.AddValidatorsFromAssembly(
     includeInternalTypes: true
     );
 
+services.AddMemoryCache();
 services.AddScoped<UrlShorteningService>();
 
 
@@ -31,12 +32,14 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+}
+
+if (!app.Environment.IsEnvironment("Testing"))
+{
     app.ApplyDatabaseMigrations();
 }
 
 app.MapUrlShortenerEndpoints();
-
-app.UseHttpsRedirection();
 
 app.Run();
 
